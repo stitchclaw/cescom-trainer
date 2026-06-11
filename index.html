@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>CESCOM Trainer</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">CESCOM Trainer</p>
+        <h1>Práctica de test para la certificación CESCOM</h1>
+        <p class="hero-text">
+          Banco inicial de preguntas orientado por prioridad real de examen: fundamentos, riesgos,
+          canales de denuncia, riesgo penal, PBC/FT y privacidad.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <button id="start-practice" class="primary-button" type="button">Modo práctica</button>
+        <button id="start-exam" class="secondary-button" type="button">Modo examen</button>
+      </div>
+    </header>
+
+    <section class="panel controls-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Configuración</p>
+          <h2>Elige cómo practicar</h2>
+        </div>
+        <span id="question-count" class="count-badge">0 preguntas</span>
+      </div>
+
+      <div class="controls-grid">
+        <label class="control-block">
+          <span class="control-label">Módulo</span>
+          <select id="module-filter"></select>
+        </label>
+
+        <label class="control-block">
+          <span class="control-label">Prioridad</span>
+          <select id="priority-filter">
+            <option value="all">Todas</option>
+            <option value="P1">Prioridad 1</option>
+            <option value="P2">Prioridad 2</option>
+            <option value="P3">Prioridad 3</option>
+          </select>
+        </label>
+
+        <label class="control-block">
+          <span class="control-label">Cantidad</span>
+          <select id="limit-filter">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+            <option value="75">75</option>
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+            <option value="1000">1000</option>
+            <option value="999">Todas</option>
+          </select>
+        </label>
+
+        <label class="control-block">
+          <span class="control-label">Buscar</span>
+          <input id="search-filter" type="search" placeholder="ISO, RGPD, denuncias, riesgo...">
+        </label>
+      </div>
+
+      <div class="controls-row">
+        <label class="toggle-line">
+          <input id="wrong-only-filter" type="checkbox">
+          <span>Solo falladas anteriormente</span>
+        </label>
+      </div>
+
+      <div class="mode-hint">
+        <strong>Modo práctica:</strong> corrige al instante y explica por qué.
+        <strong>Referencia:</strong> muestra la página o tramo del manual para repasar el punto.
+        <strong>Modo examen:</strong> no corrige hasta el final.
+      </div>
+    </section>
+
+    <section id="summary-panel" class="panel summary-panel">
+      <div class="summary-card">
+        <span class="metric-label">Respondidas</span>
+        <strong id="answered-metric">0</strong>
+      </div>
+      <div class="summary-card">
+        <span class="metric-label">Aciertos</span>
+        <strong id="correct-metric">0</strong>
+      </div>
+      <div class="summary-card">
+        <span class="metric-label">Errores</span>
+        <strong id="wrong-metric">0</strong>
+      </div>
+      <div class="summary-card">
+        <span class="metric-label">Precisión</span>
+        <strong id="accuracy-metric">0%</strong>
+      </div>
+    </section>
+
+    <section class="panel progress-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Progreso</p>
+          <h2>Histórico guardado en este navegador</h2>
+        </div>
+      </div>
+      <div class="summary-panel">
+        <div class="summary-card">
+          <span class="metric-label">Intentos históricos</span>
+          <strong id="lifetime-answered">0</strong>
+        </div>
+        <div class="summary-card">
+          <span class="metric-label">Aciertos históricos</span>
+          <strong id="lifetime-correct">0</strong>
+        </div>
+        <div class="summary-card">
+          <span class="metric-label">Precisión histórica</span>
+          <strong id="lifetime-accuracy">0%</strong>
+        </div>
+        <div class="summary-card">
+          <span class="metric-label">Falladas pendientes</span>
+          <strong id="lifetime-wrong">0</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel modules-panel">
+      <details class="progress-disclosure">
+        <summary class="progress-summary">
+          <div>
+            <p class="eyebrow">Progreso</p>
+            <h2>Dónde va bien y dónde no</h2>
+          </div>
+          <span class="progress-toggle">Mostrar</span>
+        </summary>
+        <div id="module-stats" class="module-stats"></div>
+      </details>
+    </section>
+
+    <section class="panel quiz-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Preguntas</p>
+          <h2 id="quiz-title">Selecciona un modo para empezar</h2>
+        </div>
+        <div class="panel-actions">
+          <button id="shuffle-button" class="ghost-button" type="button">Barajar</button>
+          <button id="reset-button" class="ghost-button" type="button">Reiniciar</button>
+          <button id="submit-exam" class="primary-button hidden" type="button">Corregir examen</button>
+        </div>
+      </div>
+      <div id="quiz-list" class="quiz-list empty-state">
+        Aún no hay una sesión activa.
+      </div>
+    </section>
+  </main>
+
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
