@@ -241,10 +241,10 @@ function findDistinctiveTerms(correctText, selectedText) {
 function buildWhyCorrect(question) {
   const keyBits = (question.studyPoints || []).slice(0, 3);
   if (keyBits.length) {
-    return `La correcta es <strong>${escapeHtml(question.correctText)}</strong> porque el punto que debes fijar es: ${escapeHtml(keyBits.join('; '))}.`;
+    return `Quédate con esto: ${escapeHtml(keyBits.join('; '))}.`;
   }
 
-  return `La correcta es <strong>${escapeHtml(question.correctText)}</strong> porque es la formulación que encaja con ${escapeHtml(question.topic.toLowerCase())}.`;
+  return `Quédate con esto: ${escapeHtml(question.correctText)}.`;
 }
 
 function buildWrongAnswerFeedback(question, selectedText) {
@@ -254,18 +254,18 @@ function buildWrongAnswerFeedback(question, selectedText) {
   const contrastParts = [];
 
   if (missingTerms.length) {
-    contrastParts.push(`tu opción no recoge elementos clave como ${missingTerms.map((term) => `<strong>${escapeHtml(term)}</strong>`).join(', ')}`);
+    contrastParts.push(`el matiz decisivo está en ${missingTerms.map((term) => `<strong>${escapeHtml(term)}</strong>`).join(', ')}`);
   }
 
   if (identifiers.length) {
-    contrastParts.push(`conviene fijar referencias concretas como ${identifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
+    contrastParts.push(`conviene fijar referencias como ${identifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
   }
 
   if (!contrastParts.length) {
-    contrastParts.push('mezcla una idea próxima con otra que el temario no formula así');
+    contrastParts.push('el temario distingue esta idea de otras muy próximas');
   }
 
-  return `Tu respuesta fue <strong>${escapeHtml(selectedText)}</strong>; falla porque ${contrastParts.join(' y ')}.`;
+  return `La clave es que ${contrastParts.join(' y ')}.`;
 }
 
 function buildStudyAnchor(question) {
@@ -297,16 +297,13 @@ function renderExplanation(question, selectedIndex, showNow) {
     ? `<div class="source-ref"><strong>Referencia manual:</strong> ${question.sourcePages}</div>`
     : '';
 
-  const sections = [
-    `<p class="explanation-line"><strong>${isCorrect ? 'Correcta.' : 'Incorrecta.'}</strong> ${escapeHtml(question.explanation)}</p>`,
-    `<p class="explanation-line">${buildWhyCorrect(question)}</p>`
-  ];
+  const sections = [];
 
   if (!isCorrect && selectedText) {
     sections.push(`<p class="explanation-line">${buildWrongAnswerFeedback(question, selectedText)}</p>`);
   }
 
-  sections.push(`<p class="explanation-line"><strong>Qué debes llevarte:</strong> ${buildStudyAnchor(question)}</p>`);
+  sections.push(`<p class="explanation-line">${buildWhyCorrect(question)}</p>`);
 
   return `
     <div class="explanation">
