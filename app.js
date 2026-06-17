@@ -241,10 +241,10 @@ function findDistinctiveTerms(correctText, selectedText) {
 function buildWhyCorrect(question) {
   const keyBits = (question.studyPoints || []).slice(0, 3);
   if (keyBits.length) {
-    return `Quédate con esto: ${escapeHtml(keyBits.join('; '))}.`;
+    return `Aquí el punto importante es ${escapeHtml(keyBits.join('; '))}.`;
   }
 
-  return `Quédate con esto: ${escapeHtml(question.correctText)}.`;
+  return `Aquí el punto importante es ${escapeHtml(question.correctText)}.`;
 }
 
 function buildWrongAnswerFeedback(question, selectedText) {
@@ -265,7 +265,7 @@ function buildWrongAnswerFeedback(question, selectedText) {
     contrastParts.push('el temario distingue esta idea de otras muy próximas');
   }
 
-  return `La clave es que ${contrastParts.join(' y ')}.`;
+  return `No encaja porque ${contrastParts.join(' y ')}.`;
 }
 
 function buildStudyAnchor(question) {
@@ -299,11 +299,15 @@ function renderExplanation(question, selectedIndex, showNow) {
 
   const sections = [];
 
+  sections.push(`<p class="explanation-line">${escapeHtml(question.explanation)}</p>`);
+
   if (!isCorrect && selectedText) {
     sections.push(`<p class="explanation-line">${buildWrongAnswerFeedback(question, selectedText)}</p>`);
+  } else {
+    sections.push(`<p class="explanation-line">${buildWhyCorrect(question)}</p>`);
   }
 
-  sections.push(`<p class="explanation-line">${buildWhyCorrect(question)}</p>`);
+  sections.push(`<p class="explanation-line"><strong>Quédate con esto:</strong> ${buildStudyAnchor(question)}</p>`);
 
   return `
     <div class="explanation">
