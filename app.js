@@ -205,20 +205,112 @@ function renderModuleStats() {
   }).join('');
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenize(text) {
+  return normalizeText(text)
+    .split(' ')
+    .filter((token) => token && token.length > 2);
+}
+
+function findDistinctiveTerms(correctText, selectedText) {
+  const correctTokens = tokenize(correctText);
+  const selectedTokens = new Set(tokenize(selectedText));
+  return correctTokens.filter((token, index) => (
+    !selectedTokens.has(token) && correctTokens.indexOf(token) === index
+  )).slice(0, 3);
+}
+
+function buildWhyCorrect(question) {
+  const keyBits = (question.studyPoints || []).slice(0, 3);
+  if (keyBits.length) {
+    return `La correcta es <strong>${escapeHtml(question.correctText)}</strong> porque el punto que debes fijar es: ${escapeHtml(keyBits.join('; '))}.`;
+  }
+
+  return `La correcta es <strong>${escapeHtml(question.correctText)}</strong> porque es la formulación que encaja con ${escapeHtml(question.topic.toLowerCase())}.`;
+}
+
+function buildWrongAnswerFeedback(question, selectedText) {
+  const identifiers = question.keyIdentifiers || [];
+  const missingTerms = findDistinctiveTerms(question.correctText, selectedText);
+
+  const contrastParts = [];
+
+  if (missingTerms.length) {
+    contrastParts.push(`tu opción no recoge elementos clave como ${missingTerms.map((term) => `<strong>${escapeHtml(term)}</strong>`).join(', ')}`);
+  }
+
+  if (identifiers.length) {
+    contrastParts.push(`conviene fijar referencias concretas como ${identifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
+  }
+
+  if (!contrastParts.length) {
+    contrastParts.push('mezcla una idea próxima con otra que el temario no formula así');
+  }
+
+  return `Tu respuesta fue <strong>${escapeHtml(selectedText)}</strong>; falla porque ${contrastParts.join(' y ')}.`;
+}
+
+function buildStudyAnchor(question) {
+  const anchors = [];
+
+  if (question.keyIdentifiers?.length) {
+    anchors.push(`referencias a memorizar: ${question.keyIdentifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
+  }
+
+  if (question.studyPoints?.length) {
+    anchors.push(`idea operativa: ${escapeHtml(question.studyPoints.slice(0, 2).join('; '))}`);
+  }
+
+  if (!anchors.length) {
+    anchors.push(`idea operativa: ${escapeHtml(question.correctText)}`);
+  }
+
+  return anchors.join(' · ');
+}
+
 function renderExplanation(question, selectedIndex, showNow) {
   if (!showNow) {
     return '';
   }
 
   const isCorrect = selectedIndex === question.correctIndex;
+  const selectedText = typeof selectedIndex === 'number' ? question.options[selectedIndex] : '';
   const sourceBlock = question.sourcePages
     ? `<div class="source-ref"><strong>Referencia manual:</strong> ${question.sourcePages}</div>`
     : '';
 
+  const sections = [
+    `<p class="explanation-line"><strong>${isCorrect ? 'Correcta.' : 'Incorrecta.'}</strong> ${escapeHtml(question.explanation)}</p>`,
+    `<p class="explanation-line">${buildWhyCorrect(question)}</p>`
+  ];
+
+  if (!isCorrect && selectedText) {
+    sections.push(`<p class="explanation-line">${buildWrongAnswerFeedback(question, selectedText)}</p>`);
+  }
+
+  sections.push(`<p class="explanation-line"><strong>Qué debes llevarte:</strong> ${buildStudyAnchor(question)}</p>`);
+
   return `
     <div class="explanation">
-      <strong>${isCorrect ? 'Correcta.' : 'Incorrecta.'}</strong>
-      ${question.explanation}
+      ${sections.join('')}
       ${sourceBlock}
     </div>
   `;

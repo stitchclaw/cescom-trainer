@@ -628,9 +628,13 @@ function buildQuestions() {
         module: factItem.module,
         priority: factItem.priority,
         topic: factItem.topic,
+        stem: factItem.stem,
         prompt: question.prompt,
         options: question.options,
         correctIndex: question.correctIndex,
+        correctText: question.options[question.correctIndex],
+        studyPoints: factItem.clauses.slice(0, 4),
+        keyIdentifiers: factItem.identifiers.map((item) => item.value).slice(0, 4),
         explanation: factItem.explanation,
         sourcePages: factItem.exactPage,
         difficulty: question.difficulty

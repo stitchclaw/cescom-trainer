@@ -386,6 +386,10 @@ input[type="search"] {
   line-height: 1.55;
 }
 
+.explanation-line + .explanation-line {
+  margin-top: 10px;
+}
+
 .explanation strong {
   color: var(--ink);
 }
