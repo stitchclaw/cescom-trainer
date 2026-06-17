@@ -309,25 +309,13 @@ function renderExplanation(question, selectedIndex, showNow) {
     return '';
   }
 
-  const isCorrect = selectedIndex === question.correctIndex;
-  const selectedText = typeof selectedIndex === 'number' ? question.options[selectedIndex] : '';
   const sourceBlock = question.sourcePages
     ? `<div class="source-ref"><strong>Referencia manual:</strong> ${question.sourcePages}</div>`
     : '';
 
-  const sections = [];
-
-  sections.push(`<p class="explanation-line">${buildContextLine(question)}</p>`);
-
-  if (!isCorrect && selectedText) {
-    sections.push(`<p class="explanation-line">${buildWrongAnswerFeedback(question, selectedText)}</p>`);
-  }
-
-  sections.push(`<p class="explanation-line"><strong>Quédate con esto:</strong> ${buildStudyAnchor(question)}</p>`);
-
   return `
     <div class="explanation">
-      ${sections.join('')}
+      <p class="explanation-line">${buildContextLine(question)}</p>
       ${sourceBlock}
     </div>
   `;
