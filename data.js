@@ -156,6 +156,188 @@ function compactOptionText(text) {
   return output;
 }
 
+const STOPWORDS = new Set([
+  'a', 'al', 'ante', 'bajo', 'cabe', 'con', 'contra', 'como', 'cual', 'cuáles', 'cuál',
+  'de', 'del', 'desde', 'donde', 'dos', 'el', 'ella', 'ellas', 'ellos', 'en', 'entre',
+  'es', 'esa', 'ese', 'eso', 'esta', 'este', 'esto', 'ha', 'han', 'hasta', 'la', 'las',
+  'lo', 'los', 'más', 'menos', 'muy', 'o', 'otra', 'otro', 'otras', 'otros', 'para',
+  'pero', 'por', 'que', 'qué', 'se', 'si', 'sin', 'sobre', 'su', 'sus', 'también', 'todo',
+  'tras', 'un', 'una', 'uno', 'unas', 'unos', 'y', 'ya'
+]);
+
+function normalizeText(text) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenize(text) {
+  return normalizeText(text)
+    .split(' ')
+    .filter((token) => token && token.length > 2 && !STOPWORDS.has(token));
+}
+
+function uniqueByNormalized(items) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const normalized = normalizeText(item.text);
+    if (!normalized || seen.has(normalized)) {
+      return false;
+    }
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function sharedTokenCount(tokensA, tokensB) {
+  const pool = new Set(tokensB);
+  return tokensA.reduce((count, token) => count + (pool.has(token) ? 1 : 0), 0);
+}
+
+function enrichFacts() {
+  return FACTS.map((factItem) => ({
+    ...factItem,
+    exactPage: factItem.sourcePages.replace(/^pp?\.\s*(\d+).*/, 'p. $1'),
+    compactCorrect: compactOptionText(factItem.correct),
+    compactDistractors: factItem.distractors.map(compactOptionText)
+  }));
+}
+
+const ENRICHED_FACTS = enrichFacts();
+
+function scoreCandidate(factItem, candidate) {
+  const correctTokens = tokenize(factItem.compactCorrect);
+  const candidateTokens = tokenize(candidate.text);
+  const stemTokens = tokenize(factItem.stem);
+  const topicTokens = tokenize(factItem.topic);
+  const correctOverlap = sharedTokenCount(candidateTokens, correctTokens);
+  const stemOverlap = sharedTokenCount(candidateTokens, stemTokens);
+  const topicOverlap = sharedTokenCount(candidateTokens, topicTokens);
+  const sameModuleBonus = candidate.module === factItem.module ? 2.6 : 0;
+  const samePriorityBonus = candidate.priority === factItem.priority ? 1.1 : 0;
+  const sourceBonus = candidate.source === 'peer-correct' ? 1.6 : 0.5;
+  const lengthPenalty = Math.abs(candidateTokens.length - correctTokens.length) * 0.08;
+
+  return (
+    (correctOverlap * 2.1) +
+    (stemOverlap * 1.1) +
+    (topicOverlap * 0.8) +
+    sameModuleBonus +
+    samePriorityBonus +
+    sourceBonus -
+    lengthPenalty
+  );
+}
+
+function buildDistractorBank(factItem) {
+  const ownNormalized = normalizeText(factItem.compactCorrect);
+  const pool = [];
+
+  factItem.compactDistractors.forEach((text) => {
+    pool.push({
+      text,
+      module: factItem.module,
+      priority: factItem.priority,
+      source: 'own-distractor'
+    });
+  });
+
+  ENRICHED_FACTS.forEach((peerFact) => {
+    if (peerFact.id === factItem.id) {
+      return;
+    }
+
+    pool.push({
+      text: peerFact.compactCorrect,
+      module: peerFact.module,
+      priority: peerFact.priority,
+      source: 'peer-correct'
+    });
+
+    peerFact.compactDistractors.slice(0, 2).forEach((text) => {
+      pool.push({
+        text,
+        module: peerFact.module,
+        priority: peerFact.priority,
+        source: 'peer-distractor'
+      });
+    });
+  });
+
+  return uniqueByNormalized(pool)
+    .filter((candidate) => normalizeText(candidate.text) !== ownNormalized)
+    .map((candidate) => ({
+      ...candidate,
+      score: scoreCandidate(factItem, candidate)
+    }))
+    .sort((left, right) => right.score - left.score);
+}
+
+function selectDistractors(factItem, variantIndex) {
+  const bank = buildDistractorBank(factItem);
+  const selected = [];
+  const usedModules = new Set();
+
+  const sameModuleFirst = bank.filter((candidate) => candidate.module === factItem.module);
+  const samePriorityNext = bank.filter(
+    (candidate) => candidate.module !== factItem.module && candidate.priority === factItem.priority
+  );
+  const remaining = bank.filter(
+    (candidate) => candidate.module !== factItem.module && candidate.priority !== factItem.priority
+  );
+
+  const orderedPool = [...sameModuleFirst, ...samePriorityNext, ...remaining];
+  const offset = variantIndex % 5;
+
+  orderedPool.slice(offset).concat(orderedPool.slice(0, offset)).forEach((candidate) => {
+    if (selected.length === 3) {
+      return;
+    }
+
+    const normalized = normalizeText(candidate.text);
+    const alreadyChosen = selected.some((item) => normalizeText(item) === normalized);
+    if (alreadyChosen) {
+      return;
+    }
+
+    if (candidate.module !== factItem.module && usedModules.has(candidate.module)) {
+      return;
+    }
+
+    if (candidate.module !== factItem.module) {
+      usedModules.add(candidate.module);
+    }
+
+    selected.push(candidate.text);
+  });
+
+  if (selected.length < 3) {
+    factItem.compactDistractors.forEach((text) => {
+      if (selected.length === 3) {
+        return;
+      }
+
+      const normalized = normalizeText(text);
+      const alreadyChosen = selected.some((item) => normalizeText(item) === normalized);
+      if (!alreadyChosen) {
+        selected.push(text);
+      }
+    });
+  }
+
+  return selected.slice(0, 3);
+}
+
+function cleanPrompt(prompt) {
+  return prompt
+    .replace(/\ba el\b/gi, 'al')
+    .replace(/\bde el\b/gi, 'del');
+}
+
 function hashString(value) {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -179,11 +361,10 @@ function seededShuffle(items, seedValue) {
 }
 
 function buildQuestions() {
-  return FACTS.flatMap((factItem) => {
-    const exactPage = factItem.sourcePages.replace(/^pp?\.\s*(\d+).*/, 'p. $1');
+  return ENRICHED_FACTS.flatMap((factItem) => {
     return QUESTION_TEMPLATES.map((template, templateIndex) => {
-      const compactCorrect = compactOptionText(factItem.correct);
-      const compactDistractors = factItem.distractors.map(compactOptionText);
+      const compactCorrect = factItem.compactCorrect;
+      const compactDistractors = selectDistractors(factItem, templateIndex);
       const options = seededShuffle(
         [compactCorrect, ...compactDistractors],
         `${factItem.id}-${templateIndex}`
@@ -194,12 +375,12 @@ function buildQuestions() {
         module: factItem.module,
         priority: factItem.priority,
         topic: factItem.topic,
-        prompt: template(factItem),
+        prompt: cleanPrompt(template(factItem)),
         options,
         correctIndex: options.indexOf(compactCorrect),
         explanation: factItem.explanation,
-        sourcePages: exactPage,
-        difficulty: 'hard'
+        sourcePages: factItem.exactPage,
+        difficulty: 'very-hard'
       };
     });
   });
