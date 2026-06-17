@@ -104,20 +104,14 @@ const FACTS = [
   fact('m20-f4', 'M20', 'P3', 'Incidentes', 'pp. 821-839', 'la utilidad de clasificar incidentes de seguridad', 'ordenar respuesta, coordinación y aprendizaje en un entorno de amenazas diversas', ['evitar documentar incidentes menores para reducir carga administrativa', 'sustituir cualquier análisis posterior de causas y controles', 'limitar el reporte solo a incidentes que causen impacto reputacional público'], 'El módulo insiste en estandarización y clasificación como bases de gestión.'),
 ];
 
-const QUESTION_TEMPLATES = [
+const GENERIC_QUESTION_TEMPLATES = [
   (factItem) => `¿Cuál de las siguientes afirmaciones es correcta sobre ${factItem.stem}?`,
   (factItem) => `Señale la respuesta correcta sobre ${factItem.stem}.`,
   (factItem) => `En relación con ${factItem.stem}, indique la respuesta correcta.`,
   (factItem) => `¿Qué opción describe mejor ${factItem.stem}?`,
   (factItem) => `Con respecto a ${factItem.stem}, ¿qué afirmación es correcta?`,
   (factItem) => `¿Cuál es la opción correcta en relación con ${factItem.stem}?`,
-  (factItem) => `Sobre ${factItem.stem}, señale la afirmación correcta.`,
-  (factItem) => `Indique cuál de las siguientes opciones es correcta respecto de ${factItem.stem}.`,
-  (factItem) => `Marque la respuesta correcta sobre ${factItem.stem}.`,
-  (factItem) => `¿Qué respuesta resulta más correcta sobre ${factItem.stem}?`,
-  (factItem) => `En el contexto del manual, ¿cuál es la respuesta correcta sobre ${factItem.stem}?`,
-  (factItem) => `Señale la opción más correcta acerca de ${factItem.stem}.`,
-  (factItem) => `¿Qué afirmación recoge mejor ${factItem.stem}?`
+  (factItem) => `Sobre ${factItem.stem}, señale la afirmación correcta.`
 ];
 
 function compactOptionText(text) {
@@ -142,6 +136,29 @@ function compactOptionText(text) {
     .replace(/^deben\s+/i, '')
     .replace(/^es\s+/i, '')
     .replace(/^son\s+/i, '');
+
+  if (!output) {
+    return text;
+  }
+
+  output = output.charAt(0).toUpperCase() + output.slice(1);
+
+  if (!/[.!?]$/.test(output)) {
+    output += '.';
+  }
+
+  return output;
+}
+
+function compactClauseText(text) {
+  let output = text.trim();
+
+  output = output
+    .replace(/^(y|e)\s+/i, '')
+    .replace(/^mientras\s+/i, '')
+    .replace(/^porque\s+/i, '')
+    .replace(/^ya que\s+/i, '')
+    .replace(/^puesto que\s+/i, '');
 
   if (!output) {
     return text;
@@ -181,6 +198,41 @@ function tokenize(text) {
     .filter((token) => token && token.length > 2 && !STOPWORDS.has(token));
 }
 
+function splitClauses(text) {
+  const baseParts = text
+    .replace(/\s+/g, ' ')
+    .split(/,|;/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const expandedParts = baseParts.flatMap((part) => {
+    if (/\sy\s/.test(part) && part.length > 35) {
+      return part.split(/\sy\s/).map((item) => item.trim()).filter(Boolean);
+    }
+    return [part];
+  });
+
+  return expandedParts
+    .map(compactClauseText)
+    .filter((part) => normalizeText(part).length > 5);
+}
+
+function findIdentifiers(text) {
+  const patterns = [
+    { type: 'year', regex: /\b(19|20)\d{2}\b/g },
+    { type: 'iso', regex: /\bISO\s\d{4,5}\b/gi },
+    { type: 'une', regex: /\bUNE\s\d{4,5}\b/gi },
+    { type: 'circular', regex: /\bCircular\s\d+\/\d{4}\b/gi },
+    { type: 'ley', regex: /\bLey\s\d+\/\d{4}\b/gi },
+    { type: 'org', regex: /\b(?:RGPD|LOPDGDD|OCDE|MiFID II|Fiscalía|Código Penal)\b/gi }
+  ];
+
+  return patterns.flatMap(({ type, regex }) => {
+    const matches = text.match(regex) || [];
+    return matches.map((value) => ({ type, value: value.trim() }));
+  });
+}
+
 function uniqueByNormalized(items) {
   const seen = new Set();
   return items.filter((item) => {
@@ -193,6 +245,10 @@ function uniqueByNormalized(items) {
   });
 }
 
+function uniquePrimitive(items) {
+  return [...new Set(items)];
+}
+
 function sharedTokenCount(tokensA, tokensB) {
   const pool = new Set(tokensB);
   return tokensA.reduce((count, token) => count + (pool.has(token) ? 1 : 0), 0);
@@ -203,11 +259,36 @@ function enrichFacts() {
     ...factItem,
     exactPage: factItem.sourcePages.replace(/^pp?\.\s*(\d+).*/, 'p. $1'),
     compactCorrect: compactOptionText(factItem.correct),
-    compactDistractors: factItem.distractors.map(compactOptionText)
+    compactDistractors: factItem.distractors.map(compactOptionText),
+    clauses: splitClauses(compactOptionText(factItem.correct)),
+    identifiers: uniquePrimitive(
+      findIdentifiers(
+        [factItem.topic, factItem.stem, factItem.correct, factItem.explanation].join(' ')
+      ).map((item) => `${item.type}:${item.value}`)
+    ).map((item) => {
+      const [type, ...rest] = item.split(':');
+      return { type, value: rest.join(':') };
+    })
   }));
 }
 
 const ENRICHED_FACTS = enrichFacts();
+const CLAUSE_POOL = ENRICHED_FACTS.flatMap((factItem) =>
+  factItem.clauses.map((clause) => ({
+    text: clause,
+    module: factItem.module,
+    priority: factItem.priority,
+    factId: factItem.id
+  }))
+);
+const IDENTIFIER_POOL = ENRICHED_FACTS.flatMap((factItem) =>
+  factItem.identifiers.map((identifier) => ({
+    ...identifier,
+    module: factItem.module,
+    priority: factItem.priority,
+    factId: factItem.id
+  }))
+);
 
 function scoreCandidate(factItem, candidate) {
   const correctTokens = tokenize(factItem.compactCorrect);
@@ -277,6 +358,10 @@ function buildDistractorBank(factItem) {
     .sort((left, right) => right.score - left.score);
 }
 
+function pickSeeded(items, seedValue) {
+  return seededShuffle(items, seedValue);
+}
+
 function selectDistractors(factItem, variantIndex) {
   const bank = buildDistractorBank(factItem);
   const selected = [];
@@ -332,6 +417,181 @@ function selectDistractors(factItem, variantIndex) {
   return selected.slice(0, 3);
 }
 
+function selectClauseDistractors(factItem, correctClause, variantIndex) {
+  const ownNormalized = normalizeText(correctClause);
+  const pool = CLAUSE_POOL
+    .filter((candidate) => normalizeText(candidate.text) !== ownNormalized)
+    .filter((candidate) => candidate.factId !== factItem.id)
+    .sort((left, right) => {
+      const sameModuleLeft = left.module === factItem.module ? 1 : 0;
+      const sameModuleRight = right.module === factItem.module ? 1 : 0;
+      if (sameModuleLeft !== sameModuleRight) {
+        return sameModuleRight - sameModuleLeft;
+      }
+      const samePriorityLeft = left.priority === factItem.priority ? 1 : 0;
+      const samePriorityRight = right.priority === factItem.priority ? 1 : 0;
+      return samePriorityRight - samePriorityLeft;
+    });
+
+  return pickSeeded(pool, `${factItem.id}-clause-${variantIndex}`)
+    .filter((candidate, index, array) =>
+      array.findIndex((item) => normalizeText(item.text) === normalizeText(candidate.text)) === index
+    )
+    .slice(0, 3)
+    .map((candidate) => candidate.text);
+}
+
+function selectForeignClause(factItem, excludedClauses, variantIndex) {
+  const excluded = new Set(excludedClauses.map((clause) => normalizeText(clause)));
+
+  return pickSeeded(
+    CLAUSE_POOL.filter((candidate) =>
+      candidate.factId !== factItem.id && !excluded.has(normalizeText(candidate.text))
+    ),
+    `${factItem.id}-foreign-clause-${variantIndex}`
+  )[0]?.text;
+}
+
+function selectIdentifierDistractors(factItem, identifier, variantIndex) {
+  return pickSeeded(
+    IDENTIFIER_POOL.filter((candidate) =>
+      candidate.type === identifier.type &&
+      candidate.value !== identifier.value &&
+      candidate.factId !== factItem.id
+    ),
+    `${factItem.id}-identifier-${identifier.value}-${variantIndex}`
+  )
+    .filter((candidate, index, array) =>
+      array.findIndex((item) => item.value === candidate.value) === index
+    )
+    .slice(0, 3)
+    .map((candidate) => candidate.value);
+}
+
+function buildGenericQuestion(factItem, templateIndex) {
+  const compactCorrect = factItem.compactCorrect;
+  const compactDistractors = selectDistractors(factItem, templateIndex);
+  const options = seededShuffle(
+    [compactCorrect, ...compactDistractors],
+    `${factItem.id}-generic-${templateIndex}`
+  );
+
+  return {
+    prompt: cleanPrompt(GENERIC_QUESTION_TEMPLATES[templateIndex % GENERIC_QUESTION_TEMPLATES.length](factItem)),
+    options,
+    correctIndex: options.indexOf(compactCorrect),
+    difficulty: 'very-hard'
+  };
+}
+
+function buildClauseMemberQuestion(factItem, variantIndex) {
+  if (!factItem.clauses.length) {
+    return null;
+  }
+
+  const clauses = pickSeeded(factItem.clauses, `${factItem.id}-own-clause-${variantIndex}`);
+  const correctClause = clauses[0];
+  const distractors = selectClauseDistractors(factItem, correctClause, variantIndex);
+
+  if (distractors.length < 3) {
+    return null;
+  }
+
+  const options = seededShuffle(
+    [correctClause, ...distractors],
+    `${factItem.id}-clause-member-${variantIndex}`
+  );
+
+  return {
+    prompt: cleanPrompt(`En relación con ${factItem.stem}, señale qué elemento aparece expresamente en la formulación correcta.`),
+    options,
+    correctIndex: options.indexOf(correctClause),
+    difficulty: 'memoristic'
+  };
+}
+
+function buildClauseExclusionQuestion(factItem, variantIndex) {
+  if (factItem.clauses.length < 3) {
+    return null;
+  }
+
+  const ownClauses = pickSeeded(factItem.clauses, `${factItem.id}-own-exclusion-${variantIndex}`).slice(0, 3);
+  const foreignClause = selectForeignClause(factItem, ownClauses, variantIndex);
+
+  if (!foreignClause) {
+    return null;
+  }
+
+  const options = seededShuffle(
+    [...ownClauses, foreignClause],
+    `${factItem.id}-clause-exclusion-${variantIndex}`
+  );
+
+  return {
+    prompt: cleanPrompt(`¿Cuál de los siguientes elementos NO forma parte de la formulación correcta sobre ${factItem.stem}?`),
+    options,
+    correctIndex: options.indexOf(foreignClause),
+    difficulty: 'memoristic'
+  };
+}
+
+function buildIdentifierQuestion(factItem, variantIndex) {
+  if (!factItem.identifiers.length) {
+    return null;
+  }
+
+  const identifier = pickSeeded(factItem.identifiers, `${factItem.id}-identifier-own-${variantIndex}`)[0];
+  const distractors = selectIdentifierDistractors(factItem, identifier, variantIndex);
+
+  if (distractors.length < 3) {
+    return null;
+  }
+
+  const promptByType = {
+    year: `¿Qué año aparece vinculado en el temario a ${factItem.stem}?`,
+    iso: `¿Qué referencia ISO aparece asociada a ${factItem.stem}?`,
+    une: `¿Qué referencia UNE se menciona en relación con ${factItem.stem}?`,
+    circular: `¿Qué Circular se vincula a ${factItem.stem}?`,
+    ley: `¿Qué Ley se cita en relación con ${factItem.stem}?`,
+    org: `¿Qué referencia u organismo aparece expresamente asociado a ${factItem.stem}?`
+  };
+
+  const options = seededShuffle(
+    [identifier.value, ...distractors],
+    `${factItem.id}-identifier-question-${variantIndex}`
+  );
+
+  return {
+    prompt: cleanPrompt(promptByType[identifier.type] || `¿Qué referencia concreta aparece asociada a ${factItem.stem}?`),
+    options,
+    correctIndex: options.indexOf(identifier.value),
+    difficulty: 'memoristic'
+  };
+}
+
+function buildQuestionVariants(factItem) {
+  const builders = [
+    () => buildIdentifierQuestion(factItem, 0),
+    () => buildGenericQuestion(factItem, 0),
+    () => buildClauseMemberQuestion(factItem, 0),
+    () => buildGenericQuestion(factItem, 1),
+    () => buildClauseExclusionQuestion(factItem, 0),
+    () => buildGenericQuestion(factItem, 2),
+    () => buildIdentifierQuestion(factItem, 1),
+    () => buildClauseMemberQuestion(factItem, 1),
+    () => buildGenericQuestion(factItem, 3),
+    () => buildClauseExclusionQuestion(factItem, 1),
+    () => buildGenericQuestion(factItem, 4),
+    () => buildGenericQuestion(factItem, 5),
+    () => buildGenericQuestion(factItem, 6)
+  ];
+
+  return builders.map((builder, index) => {
+    const built = builder();
+    return built || buildGenericQuestion(factItem, index + 7);
+  });
+}
+
 function cleanPrompt(prompt) {
   return prompt
     .replace(/\ba el\b/gi, 'al')
@@ -362,25 +622,18 @@ function seededShuffle(items, seedValue) {
 
 function buildQuestions() {
   return ENRICHED_FACTS.flatMap((factItem) => {
-    return QUESTION_TEMPLATES.map((template, templateIndex) => {
-      const compactCorrect = factItem.compactCorrect;
-      const compactDistractors = selectDistractors(factItem, templateIndex);
-      const options = seededShuffle(
-        [compactCorrect, ...compactDistractors],
-        `${factItem.id}-${templateIndex}`
-      );
-
+    return buildQuestionVariants(factItem).map((question, questionIndex) => {
       return {
-        id: `${factItem.id}-v${templateIndex + 1}`,
+        id: `${factItem.id}-v${questionIndex + 1}`,
         module: factItem.module,
         priority: factItem.priority,
         topic: factItem.topic,
-        prompt: cleanPrompt(template(factItem)),
-        options,
-        correctIndex: options.indexOf(compactCorrect),
+        prompt: question.prompt,
+        options: question.options,
+        correctIndex: question.correctIndex,
         explanation: factItem.explanation,
         sourcePages: factItem.exactPage,
-        difficulty: 'very-hard'
+        difficulty: question.difficulty
       };
     });
   });
