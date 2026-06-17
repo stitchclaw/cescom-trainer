@@ -238,27 +238,45 @@ function findDistinctiveTerms(correctText, selectedText) {
   )).slice(0, 3);
 }
 
-function buildWhyCorrect(question) {
-  const keyBits = (question.studyPoints || []).slice(0, 3);
-  if (keyBits.length) {
-    return `Aquí el punto importante es ${escapeHtml(keyBits.join('; '))}.`;
+function simplifyExplanationText(text) {
+  return String(text || '')
+    .replace(/^CESCOM\s+/i, '')
+    .replace(/^El módulo\s+/i, '')
+    .replace(/^El manual\s+/i, '')
+    .replace(/^La lógica\s+/i, 'La clave ')
+    .replace(/^La Circular\s+/i, 'La Circular ')
+    .replace(/^Es una de las /i, 'Es una de las ')
+    .replace(/^Es uno de los /i, 'Es uno de los ');
+}
+
+function buildContextLine(question) {
+  const base = simplifyExplanationText(question.explanation);
+  const identifiers = question.keyIdentifiers || [];
+
+  if (identifiers.length) {
+    return `${escapeHtml(base)} Fíjate especialmente en referencias como ${identifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}.`;
   }
 
-  return `Aquí el punto importante es ${escapeHtml(question.correctText)}.`;
+  return escapeHtml(base);
 }
 
 function buildWrongAnswerFeedback(question, selectedText) {
   const identifiers = question.keyIdentifiers || [];
   const missingTerms = findDistinctiveTerms(question.correctText, selectedText);
+  const studyPoints = question.studyPoints || [];
 
   const contrastParts = [];
 
   if (missingTerms.length) {
-    contrastParts.push(`el matiz decisivo está en ${missingTerms.map((term) => `<strong>${escapeHtml(term)}</strong>`).join(', ')}`);
+    contrastParts.push(`el matiz decisivo estaba en ${missingTerms.map((term) => `<strong>${escapeHtml(term)}</strong>`).join(', ')}`);
   }
 
   if (identifiers.length) {
-    contrastParts.push(`conviene fijar referencias como ${identifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
+    contrastParts.push(`aquí importaba distinguir referencias concretas como ${identifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
+  }
+
+  if (!identifiers.length && studyPoints.length) {
+    contrastParts.push(`aquí importaba distinguir bien el alcance práctico del concepto`);
   }
 
   if (!contrastParts.length) {
@@ -272,15 +290,15 @@ function buildStudyAnchor(question) {
   const anchors = [];
 
   if (question.keyIdentifiers?.length) {
-    anchors.push(`referencias a memorizar: ${question.keyIdentifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
+    anchors.push(`memoriza ${question.keyIdentifiers.map((item) => `<strong>${escapeHtml(item)}</strong>`).join(', ')}`);
   }
 
   if (question.studyPoints?.length) {
-    anchors.push(`idea operativa: ${escapeHtml(question.studyPoints.slice(0, 2).join('; '))}`);
+    anchors.push(`quédate con la idea de ${escapeHtml(question.studyPoints.slice(0, 2).join('; '))}`);
   }
 
   if (!anchors.length) {
-    anchors.push(`idea operativa: ${escapeHtml(question.correctText)}`);
+    anchors.push(`quédate con la idea central de ${escapeHtml(question.topic.toLowerCase())}`);
   }
 
   return anchors.join(' · ');
@@ -299,12 +317,10 @@ function renderExplanation(question, selectedIndex, showNow) {
 
   const sections = [];
 
-  sections.push(`<p class="explanation-line">${escapeHtml(question.explanation)}</p>`);
+  sections.push(`<p class="explanation-line">${buildContextLine(question)}</p>`);
 
   if (!isCorrect && selectedText) {
     sections.push(`<p class="explanation-line">${buildWrongAnswerFeedback(question, selectedText)}</p>`);
-  } else {
-    sections.push(`<p class="explanation-line">${buildWhyCorrect(question)}</p>`);
   }
 
   sections.push(`<p class="explanation-line"><strong>Quédate con esto:</strong> ${buildStudyAnchor(question)}</p>`);
